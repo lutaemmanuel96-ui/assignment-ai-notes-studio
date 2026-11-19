@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Assignment AI & Notes Studio</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; background: #0b0e14; color: #e2e8f0; display: flex; height: 100vh; overflow: hidden; }
+    .sidebar { width: 320px; background: #111622; border-right: 1px solid #1e293b; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .topbar { padding: 10px 18px; background: #111622; border-bottom: 1px solid #1e293b; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .topbar input, .topbar select, .sidebar input, .sidebar select {
+      background: #0b0e14; border: 1px solid #334155; color: #fff; padding: 7px 10px; border-radius: 6px; font-size: 0.85rem;
+    }
+    .topbar input[type="password"] { flex: 1; min-width: 200px; max-width: 320px; }
+    .tool-btn {
+      background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 7px 12px;
+      border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .tool-btn:hover { border-color: #6366f1; }
+    .upload-box { border: 2px dashed #334155; border-radius: 10px; padding: 14px; text-align: center; cursor: pointer; background: #0f1420; transition: 0.2s; }
+    .upload-box:hover { border-color: #6366f1; }
+    .file-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .file-item { background: #1a2234; padding: 10px; border-radius: 8px; font-size: 0.83rem; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .unit-tag { display: inline-block; background: #27344f; color: #93c5fd; padding: 2px 7px; border-radius: 999px; font-size: 0.72rem; margin-top: 4px; }
+    .file-item button.del { background: #dc2626; border: none; color: #fff; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+    .math-drawer {
+      display: none; padding: 10px 18px; background: #131b2c; border-bottom: 1px solid #1e293b;
+      align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.85rem;
+    }
+    .math-drawer input { flex: 1; min-width: 220px; background: #0b0e14; border: 1px solid #334155; color: #fff; padding: 7px 10px; border-radius: 6px; }
+    .chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    .msg { max-width: 840px; padding: 14px 18px; border-radius: 12px; line-height: 1.55; white-space: pre-wrap; }
+    .msg.user { align-self: flex-end; background: #4f46e5; color: #fff; }
+    .msg.bot { align-self: flex-start; background: #161d2d; border: 1px solid #263045; }
+    .msg img.preview { display: block; max-width: 280px; max-height: 220px; border-radius: 8px; margin-top: 8px; border: 1px solid rgba(255,255,255,0.2); }
+    .sources { margin-top: 10px; padding-top: 10px; border-top: 1px solid #2a354d; font-size: 0.8rem; color: #94a3b8; }
+    .source-chip { background: #0f172a; padding: 6px 10px; border-radius: 6px; margin-top: 6px; border-left: 3px solid #38bdf8; }
+    .composer-wrap { background: #111622; border-top: 1px solid #1e293b; padding: 12px 18px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .attachment-bar { display: none; align-items: center; gap: 10px; background: #182235; border: 1px solid #334155; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; width: fit-content; }
+    .attachment-bar button { background: transparent; border: none; color: #f87171; font-weight: 700; cursor: pointer; padding: 0 4px; }
+    .input-bar { display: flex; gap: 10px; align-items: stretch; }
+    .input-bar textarea { flex: 1; background: #0b0e14; border: 1px solid #334155; color: #fff; border-radius: 8px; padding: 10px; resize: none; height: 54px; }
+    .input-bar button.send-btn { background: #6366f1; color: #fff; border: none; padding: 0 22px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .input-bar button:disabled { opacity: 0.6; cursor: not-allowed; }
+    @media print {
+      .sidebar, .topbar, .math-drawer, .composer-wrap { display: none !important; }
+      body, .main, .chat { height: auto; overflow: visible; background: #fff; color: #000; }
+      .msg.bot { background: #f8fafc; color: #000; border: 1px solid #cbd5e1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h3 style="margin:0">Course Notes Vault</h3>
+    <div>
+      <label style="font-size:0.78rem;color:#94a3b8;display:block;margin-bottom:4px">Upload Unit Tag</label>
+      <input type="text" id="uploadUnit" value="ACS 410" placeholder="e.g. ACS 410, ACS 413" style="width:100%" />
+    </div>
+    <label class="upload-box">
+      <strong>+ Upload Notes / Handouts</strong><br/>
+      <span style="font-size:0.8rem;color:#94a3b8">PDF (incl. scanned OCR), DOCX, TXT, MD</span>
+      <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md" style="display:none" />
+    </label>
+    <div id="uploadStatus" style="font-size:0.8rem;color:#38bdf8"></div>
+    <div>
+      <label style="font-size:0.78rem;color:#94a3b8;display:block;margin-bottom:4px">Filter Active Unit</label>
+      <select id="unitFilter" style="width:100%">
+        <option value="All">All Units</option>
+      </select>
+    </div>
+    <div class="file-list" id="fileList"></div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <span style="font-weight:600">Assignment AI & Notes Studio</span>
+      <input type="password" id="apiKey" placeholder="Gemini API key (AI answers, photo & scanned OCR)" />
+      <select id="writingStyle" title="Answer phrasing style">
+        <option value="standard">Style: Standard Tutor</option>
+        <option value="normal">Style: Normal English</option>
+      </select>
+      <button type="button" class="tool-btn" id="normalRewriteBtn">✍️ Normal English</button>
+      <button type="button" class="tool-btn" id="practiceBtn">📝 Practice Drill</button>
+      <button type="button" class="tool-btn" id="mathToggleBtn">∑ Math Check</button>
+      <button type="button" class="tool-btn" id="exportDocxBtn">⬇ Export DOCX</button>
+      <button type="button" class="tool-btn" id="exportMdBtn">⬇ Export MD</button>
+      <button type="button" class="tool-btn" onclick="window.print()">🖨 Print / PDF</button>
+    </div>
+
+    <div class="math-drawer" id="mathDrawer">
+      <strong>Math Check:</strong>
+      <input type="text" id="mathExpr" placeholder="e.g. (1 + 0.08)**(-4) or 3*x + 5 = 20" />
+      <button type="button" class="tool-btn" id="verifyMathBtn">Verify</button>
+      <span id="mathResult" style="color:#38bdf8"></span>
+    </div>
+
+    <div class="chat" id="chat">
+      <div class="msg bot">Upload course notes on the left (with a unit tag like <b>ACS 410</b>), filter by unit, ask questions by typing or attaching a photo/document, use <b>Normal English</b> for natural phrasing, run <b>📝 Practice Drill</b> for CAT prep, or export your session to <b>DOCX / MD / PDF</b>.</div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="attachment-bar" id="attachmentBar">
+        <span id="attachmentLabel"></span>
+        <button type="button" id="clearAttachmentBtn" title="Remove attachment">✕</button>
+      </div>
+      <div class="input-bar">
+        <button type="button" class="tool-btn" id="attachBtn">📎 Photo / Doc</button>
+        <input type="file" id="questionFileInput" accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt,.md" style="display:none" />
+        <textarea id="question" placeholder="Type your assignment question or practice topic (Enter to send, Shift+Enter for newline)..."></textarea>
+        <button type="button" class="send-btn" id="sendBtn">Ask</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const uploadUnitEl = document.getElementById("uploadUnit");
+    const unitFilterEl = document.getElementById("unitFilter");
+    const fileList = document.getElementById("fileList");
+    const uploadStatus = document.getElementById("uploadStatus");
+    const chat = document.getElementById("chat");
+    const questionEl = document.getElementById("question");
+    const apiKeyEl = document.getElementById("apiKey");
+    const writingStyleEl = document.getElementById("writingStyle");
+    const normalRewriteBtn = document.getElementById("normalRewriteBtn");
+    const attachBtn = document.getElementById("attachBtn");
+    const questionFileInput = document.getElementById("questionFileInput");
+    const attachmentBar = document.getElementById("attachmentBar");
+    const attachmentLabel = document.getElementById("attachmentLabel");
+    const clearAttachmentBtn = document.getElementById("clearAttachmentBtn");
+    const sendBtn = document.getElementById("sendBtn");
+    const practiceBtn = document.getElementById("practiceBtn");
+    const mathToggleBtn = document.getElementById("mathToggleBtn");
+    const mathDrawer = document.getElementById("mathDrawer");
+    const mathExprEl = document.getElementById("mathExpr");
+    const verifyMathBtn = document.getElementById("verifyMathBtn");
+    const mathResultEl = document.getElementById("mathResult");
+
+    let pendingAttachment = null;
+    const sessionLog = [];
+    const chatHistory = [];
+
+    apiKeyEl.value = localStorage.getItem("gemini_key") || "";
+    apiKeyEl.addEventListener("change", () => localStorage.setItem("gemini_key", apiKeyEl.value));
+
+    function renderMath(el) {
+      if (typeof renderMathInElement === "function") {
+        renderMathInElement(el, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false }
+          ],
+          throwOnError: false
+        });
+      }
+    }
+
+    attachBtn.addEventListener("click", () => questionFileInput.click());
+
+    questionFileInput.addEventListener("change", () => {
+      const f = questionFileInput.files && questionFileInput.files[0];
+      if (!f) return;
+      pendingAttachment = f;
+      attachmentLabel.textContent = `Attached: ${f.name}`;
+      attachmentBar.style.display = "flex";
+    });
+
+    function clearAttachment() {
+      pendingAttachment = null;
+      questionFileInput.value = "";
+      attachmentLabel.textContent = "";
+      attachmentBar.style.display = "none";
+    }
+
+    clearAttachmentBtn.addEventListener("click", clearAttachment);
+
+    mathToggleBtn.addEventListener("click", () => {
+      const shown = mathDrawer.style.display === "flex";
+      mathDrawer.style.display = shown ? "none" : "flex";
+      if (!shown) mathExprEl.focus();
+    });
+
+    verifyMathBtn.addEventListener("click", async () => {
+      const expr = mathExprEl.value.trim();
+      if (!expr) return;
+      mathResultEl.textContent = "Checking...";
+      const fd = new FormData();
+      fd.append("expression", expr);
+      const res = await fetch("/verify-math", { method: "POST", body: fd });
+      const data = await res.json();
+      mathResultEl.textContent = data.result || "";
+      mathResultEl.style.color = data.ok ? "#34d399" : "#f87171";
+    });
+
+    mathExprEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") verifyMathBtn.click();
+    });
+
+    async function loadFiles() {
+      const selectedUnit = unitFilterEl.value || "All";
+      const res = await fetch("/files?course_unit=" + encodeURIComponent(selectedUnit));
+      const data = await res.json();
+
+      const currentFilter = unitFilterEl.value;
+      const units = ["All", ...(data.units || [])];
+      unitFilterEl.innerHTML = units
+        .map(u => `<option value="${u.replace(/"/g, "&quot;")}">${u}</option>`)
+        .join("");
+      if (units.includes(currentFilter)) {
+        unitFilterEl.value = currentFilter;
+      }
+
+      fileList.innerHTML = (data.files || []).map(f => `
+        <div class="file-item">
+          <div>
+            <strong>${f.filename}</strong><br/>
+            <span class="unit-tag">${f.course_unit}</span>
+            <span style="color:#94a3b8;margin-left:6px">${f.chunks} chunks</span>
+          </div>
+          <button class="del" onclick="delFile('${encodeURIComponent(f.filename)}', '${encodeURIComponent(f.course_unit)}')">X</button>
+        </div>
+      `).join("");
+    }
+
+    unitFilterEl.addEventListener("change", loadFiles);
+
+    async function delFile(encodedName, encodedUnit) {
+      await fetch(`/files/${encodedName}?course_unit=${encodedUnit}`, { method: "DELETE" });
+      loadFiles();
+    }
+
+    fileInput.addEventListener("change", async () => {
+      const unitVal = uploadUnitEl.value.trim() || "General";
+      for (const file of fileInput.files) {
+        uploadStatus.textContent = `Indexing ${file.name} (${unitVal})...`;
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("course_unit", unitVal);
+        fd.append("api_key", apiKeyEl.value);
+        const res = await fetch("/upload", { method: "POST", body: fd });
+        const data = await res.json();
+        uploadStatus.textContent = `Indexed ${data.filename} [${data.course_unit}] (${data.chunks} chunks)${data.note || ""}`;
+      }
+      fileInput.value = "";
+      await loadFiles();
+    });
+
+    function addMsg(text, cls, sources = [], imgUrl = "", fileLabel = "") {
+      const div = document.createElement("div");
+      div.className = "msg " + cls;
+      if (text) {
+        const t = document.createElement("div");
+        t.textContent = text;
+        div.appendChild(t);
+      }
+      if (fileLabel && !imgUrl) {
+        const fBadge = document.createElement("div");
+        fBadge.style.marginTop = "6px";
+        fBadge.style.fontSize = "0.85rem";
+        fBadge.style.opacity = "0.9";
+        fBadge.textContent = `📄 ${fileLabel}`;
+        div.appendChild(fBadge);
+      }
+      if (imgUrl) {
+        const img = document.createElement("img");
+        img.className = "preview";
+        img.src = imgUrl;
+        div.appendChild(img);
+      }
+      if (sources.length) {
+        const sDiv = document.createElement("div");
+        sDiv.className = "sources";
+        sDiv.innerHTML = "<strong>Matched Sources:</strong>" + sources.map(s => `
+          <div class="source-chip"><b>${s.filename} [${s.course_unit || "General"}] (Page ${s.page})</b>: ${s.snippet.slice(0, 180)}...</div>
+        `).join("");
+        div.appendChild(sDiv);
+      }
+      chat.appendChild(div);
+      renderMath(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    async function sendQuestion() {
+      const q = questionEl.value.trim();
+      const att = pendingAttachment;
+      if (!q && !att) return;
+
+      const isImage = att && /\.(png|jpe?g|webp)$/i.test(att.name);
+      const previewUrl = isImage ? URL.createObjectURL(att) : "";
+      addMsg(q, "user", [], previewUrl, att ? att.name : "");
+
+      const userSummary = q || (att ? `[Attached file: ${att.name}]` : "");
+      if (userSummary) chatHistory.push({ role: "user", text: userSummary });
+      sessionLog.push(`### Question\n${userSummary}`);
+
+      questionEl.value = "";
+      clearAttachment();
+
+      const fd = new FormData();
+      fd.append("question", q);
+      fd.append("api_key", apiKeyEl.value);
+      fd.append("course_unit", unitFilterEl.value || "All");
+      fd.append("history", JSON.stringify(chatHistory.slice(-6)));
+      fd.append("style", writingStyleEl.value);
+      if (att) fd.append("attachment", att);
+
+      sendBtn.disabled = true;
+      const thinkingMsg = addMsg("Analyzing your question and course notes...", "bot");
+
+      try {
+        const res = await fetch("/ask", { method: "POST", body: fd });
+        const data = await res.json();
+        thinkingMsg.remove();
+        addMsg(data.answer, "bot", data.sources || []);
+        if (data.answer) {
+          chatHistory.push({ role: "assistant", text: data.answer });
+          sessionLog.push(`### Answer\n${data.answer}`);
+        }
+      } catch (err) {
+        thinkingMsg.remove();
+        addMsg("Network error: " + err, "bot");
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    normalRewriteBtn.addEventListener("click", async () => {
+      const typed = questionEl.value.trim();
+      const lastBot = [...chat.querySelectorAll(".msg.bot")].pop();
+      const targetText = typed || (lastBot && lastBot.firstChild ? lastBot.firstChild.textContent.trim() : "");
+      if (!targetText) return;
+
+      if (typed) {
+        addMsg(`Rewrite in normal English:\n${typed}`, "user");
+        questionEl.value = "";
+      }
+
+      const fd = new FormData();
+      fd.append("text", targetText);
+      fd.append("api_key", apiKeyEl.value);
+
+      normalRewriteBtn.disabled = true;
+      const thinkingMsg = addMsg("Rewriting into normal English...", "bot");
+      try {
+        const res = await fetch("/humanize", { method: "POST", body: fd });
+        const data = await res.json();
+        thinkingMsg.remove();
+        addMsg(data.answer, "bot");
+        if (data.answer) {
+          chatHistory.push({ role: "assistant", text: data.answer });
+          sessionLog.push(`### Normal English Version\n${data.answer}`);
+        }
+      } catch (err) {
+        thinkingMsg.remove();
+        addMsg("Network error: " + err, "bot");
+      } finally {
+        normalRewriteBtn.disabled = false;
+      }
+    });
+
+    practiceBtn.addEventListener("click", async () => {
+      const topic = questionEl.value.trim();
+      const unit = unitFilterEl.value || "All";
+      addMsg(`Generate practice drill (${unit}${topic ? " — " + topic : ""})`, "user");
+      questionEl.value = "";
+
+      const fd = new FormData();
+      fd.append("topic", topic);
+      fd.append("api_key", apiKeyEl.value);
+      fd.append("course_unit", unit);
+      fd.append("num_questions", "4");
+
+      practiceBtn.disabled = true;
+      const thinkingMsg = addMsg("Generating practice questions from your notes...", "bot");
+      try {
+        const res = await fetch("/practice", { method: "POST", body: fd });
+        const data = await res.json();
+        thinkingMsg.remove();
+        addMsg(data.answer, "bot", data.sources || []);
+        if (data.answer) {
+          chatHistory.push({ role: "assistant", text: data.answer });
+          sessionLog.push(`### Practice Drill (${unit})\n${data.answer}`);
+        }
+      } catch (err) {
+        thinkingMsg.remove();
+        addMsg("Network error: " + err, "bot");
+      } finally {
+        practiceBtn.disabled = false;
+      }
+    });
+
+    function buildMarkdownExport() {
+      const unit = unitFilterEl.value || "All";
+      return `# Assignment AI & Notes Studio (${unit})\n\n` + sessionLog.join("\n\n---\n\n");
+    }
+
+    document.getElementById("exportMdBtn").addEventListener("click", () => {
+      const md = buildMarkdownExport();
+      const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "assignment-notes-session.md";
+      a.click();
+    });
+
+    document.getElementById("exportDocxBtn").addEventListener("click", async () => {
+      const unit = unitFilterEl.value || "All";
+      const fd = new FormData();
+      fd.append("title", `Assignment Solutions (${unit})`);
+      fd.append("content", sessionLog.join("\n\n") || "No session items yet.");
+      const res = await fetch("/export/docx", { method: "POST", body: fd });
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "assignment-solutions.docx";
+      a.click();
+    });
+
+    sendBtn.addEventListener("click", sendQuestion);
+    questionEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendQuestion();
+      }
+    });
+
+    loadFiles();
+  </script>
+</body>
+</html>
