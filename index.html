@@ -89,16 +89,14 @@
       flex: 1 1 auto;
       min-width: 180px;
     }
-    .vault-toggle-btn {
-      display: none;
-      background: #1e293b;
-      color: #38bdf8;
-      border: 1px solid #334155;
-      padding: 7px 10px;
-      border-radius: 6px;
-      font-size: 0.82rem;
-      font-weight: 700;
-      cursor: pointer;
+    .cache-badge {
+      font-size: 0.72rem;
+      color: #34d399;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      padding: 2px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
     }
     .topbar input, .topbar select, .sidebar input, .sidebar select {
       background: #0b0e14;
@@ -107,11 +105,6 @@
       padding: 8px 10px;
       border-radius: 6px;
       font-size: 0.88rem;
-    }
-    .topbar input[type="password"] {
-      flex: 1 1 180px;
-      min-width: 140px;
-      max-width: 290px;
     }
     .toolbar-actions {
       display: flex;
@@ -327,10 +320,6 @@
         box-shadow: 8px 0 28px rgba(0, 0, 0, 0.55);
       }
       .sidebar.open { transform: translateX(0); }
-      .topbar input[type="password"] {
-        flex: 1 1 100%;
-        max-width: none;
-      }
       .toolbar-actions {
         width: 100%;
         overflow-x: auto;
@@ -391,8 +380,8 @@
         <div class="brand-row">
           <button type="button" class="vault-toggle-btn" id="openVaultBtn">📚 Notes</button>
           <span style="font-weight:700;font-size:0.95rem">Assignment AI & Notes Studio</span>
+          <span class="cache-badge" id="cacheStatus">Device Cache Ready</span>
         </div>
-        <input type="password" id="apiKey" placeholder="Gemini API key (AI answers, photo & scanned OCR)" />
         <div class="toolbar-actions">
           <button type="button" class="tool-btn install-btn" id="installAppBtn" style="display:none">📲 Install App</button>
           <select id="writingStyle" title="Answer phrasing style">
@@ -405,6 +394,7 @@
           <button type="button" class="tool-btn" id="exportDocxBtn">⬇ Export DOCX</button>
           <button type="button" class="tool-btn" id="exportMdBtn">⬇ Export MD</button>
           <button type="button" class="tool-btn" onclick="window.print()">🖨 Print / PDF</button>
+          <button type="button" class="tool-btn" id="clearChatBtn">🗑 Clear Chat</button>
         </div>
       </div>
 
@@ -415,9 +405,7 @@
         <span id="mathResult" style="color:#38bdf8"></span>
       </div>
 
-      <div class="chat" id="chat">
-        <div class="msg bot">Tap <b>📚 Notes</b> on mobile (or use the left vault on desktop) to upload notes or slides with a unit tag like <b>ACS 410</b>, filter by unit, ask questions by typing or attaching multiple photos/documents/slides, switch to <b>Normal English</b>, run <b>📝 Practice Drill</b>, or export to <b>DOCX / MD / PDF</b>.</div>
-      </div>
+      <div class="chat" id="chat"></div>
 
       <div class="composer-wrap">
         <div class="attachment-bar" id="attachmentBar">
@@ -435,11 +423,22 @@
   </div>
 
   <script>
+    const CACHE_KEYS = {
+      filesByUnit: "notes_studio_cached_files_v1",
+      allUnits: "notes_studio_cached_units_v1",
+      chatItems: "notes_studio_cached_chat_v1",
+      history: "notes_studio_cached_history_v1",
+      sessionLog: "notes_studio_cached_session_log_v1",
+      selectedUnit: "notes_studio_selected_unit_v1",
+      uploadUnit: "notes_studio_upload_unit_v1"
+    };
+
     const sidebar = document.getElementById("sidebar");
     const backdrop = document.getElementById("backdrop");
     const openVaultBtn = document.getElementById("openVaultBtn");
     const closeVaultBtn = document.getElementById("closeVaultBtn");
     const installAppBtn = document.getElementById("installAppBtn");
+    const cacheStatusEl = document.getElementById("cacheStatus");
     const fileInput = document.getElementById("fileInput");
     const uploadUnitEl = document.getElementById("uploadUnit");
     const unitFilterEl = document.getElementById("unitFilter");
@@ -447,7 +446,6 @@
     const uploadStatus = document.getElementById("uploadStatus");
     const chat = document.getElementById("chat");
     const questionEl = document.getElementById("question");
-    const apiKeyEl = document.getElementById("apiKey");
     const writingStyleEl = document.getElementById("writingStyle");
     const normalRewriteBtn = document.getElementById("normalRewriteBtn");
     const attachBtn = document.getElementById("attachBtn");
@@ -462,11 +460,42 @@
     const mathExprEl = document.getElementById("mathExpr");
     const verifyMathBtn = document.getElementById("verifyMathBtn");
     const mathResultEl = document.getElementById("mathResult");
+    const clearChatBtn = document.getElementById("clearChatBtn");
+
+    const WELCOME_TEXT =
+      "Tap 📚 Notes on mobile (or use the left vault on desktop) to upload notes or slides with a unit tag like ACS 410, filter by unit, ask questions by typing or attaching multiple photos/documents/slides, switch to Normal English, run 📝 Practice Drill, or export to DOCX / MD / PDF.";
 
     let pendingAttachments = [];
     let deferredInstallPrompt = null;
-    const sessionLog = [];
-    const chatHistory = [];
+
+    function readJson(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch {
+        return fallback;
+      }
+    }
+
+    function writeJson(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (e) {
+        console.warn("Cache storage warning:", e);
+      }
+    }
+
+    let chatItems = readJson(CACHE_KEYS.chatItems, []);
+    let chatHistory = readJson(CACHE_KEYS.history, []);
+    let sessionLog = readJson(CACHE_KEYS.sessionLog, []);
+
+    uploadUnitEl.value = localStorage.getItem(CACHE_KEYS.uploadUnit) || "ACS 410";
+    uploadUnitEl.addEventListener("change", () => {
+      localStorage.setItem(CACHE_KEYS.uploadUnit, uploadUnitEl.value);
+    });
+
+    const savedUnit = localStorage.getItem(CACHE_KEYS.selectedUnit) || "All";
+    unitFilterEl.value = savedUnit;
 
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
@@ -497,9 +526,6 @@
     openVaultBtn.addEventListener("click", () => setVaultOpen(true));
     closeVaultBtn.addEventListener("click", () => setVaultOpen(false));
     backdrop.addEventListener("click", () => setVaultOpen(false));
-
-    apiKeyEl.value = localStorage.getItem("gemini_key") || "";
-    apiKeyEl.addEventListener("change", () => localStorage.setItem("gemini_key", apiKeyEl.value));
 
     function renderMath(el) {
       if (typeof renderMathInElement === "function") {
@@ -565,21 +591,17 @@
       if (e.key === "Enter") verifyMathBtn.click();
     });
 
-    async function loadFiles() {
-      const selectedUnit = unitFilterEl.value || "All";
-      const res = await fetch("/files?course_unit=" + encodeURIComponent(selectedUnit));
-      const data = await res.json();
-
-      const currentFilter = unitFilterEl.value;
-      const units = ["All", ...(data.units || [])];
-      unitFilterEl.innerHTML = units
+    function renderFilesVault(files, units) {
+      const currentFilter = unitFilterEl.value || "All";
+      const allUnits = ["All", ...(units || [])];
+      unitFilterEl.innerHTML = allUnits
         .map(u => `<option value="${u.replace(/"/g, "&quot;")}">${u}</option>`)
         .join("");
-      if (units.includes(currentFilter)) {
+      if (allUnits.includes(currentFilter)) {
         unitFilterEl.value = currentFilter;
       }
 
-      fileList.innerHTML = (data.files || []).map(f => `
+      fileList.innerHTML = (files || []).map(f => `
         <div class="file-item">
           <div>
             <strong>${f.filename}</strong><br/>
@@ -591,7 +613,43 @@
       `).join("");
     }
 
-    unitFilterEl.addEventListener("change", loadFiles);
+    function hydrateCachedVault() {
+      const cachedMap = readJson(CACHE_KEYS.filesByUnit, {});
+      const cachedUnits = readJson(CACHE_KEYS.allUnits, []);
+      const unitKey = (unitFilterEl.value || "All").toLowerCase();
+      const files = cachedMap[unitKey] || cachedMap["all"] || [];
+      if (files.length || cachedUnits.length) {
+        renderFilesVault(files, cachedUnits);
+        cacheStatusEl.textContent = `Cached (${files.length} notes)`;
+      }
+    }
+
+    async function loadFiles() {
+      const selectedUnit = unitFilterEl.value || "All";
+      localStorage.setItem(CACHE_KEYS.selectedUnit, selectedUnit);
+      try {
+        const res = await fetch("/files?course_unit=" + encodeURIComponent(selectedUnit));
+        const data = await res.json();
+        const files = data.files || [];
+        const units = data.units || [];
+
+        const cachedMap = readJson(CACHE_KEYS.filesByUnit, {});
+        cachedMap[selectedUnit.toLowerCase()] = files;
+        writeJson(CACHE_KEYS.filesByUnit, cachedMap);
+        writeJson(CACHE_KEYS.allUnits, units);
+
+        renderFilesVault(files, units);
+        cacheStatusEl.textContent = `Synced (${files.length} notes)`;
+      } catch {
+        hydrateCachedVault();
+        cacheStatusEl.textContent = "Offline / Device Cache";
+      }
+    }
+
+    unitFilterEl.addEventListener("change", () => {
+      hydrateCachedVault();
+      loadFiles();
+    });
 
     async function delFile(encodedName, encodedUnit) {
       await fetch(`/files/${encodedName}?course_unit=${encodedUnit}`, { method: "DELETE" });
@@ -609,7 +667,6 @@
         const fd = new FormData();
         fd.append("file", file);
         fd.append("course_unit", unitVal);
-        fd.append("api_key", apiKeyEl.value);
         try {
           const res = await fetch("/upload", { method: "POST", body: fd });
           const data = await res.json();
@@ -626,52 +683,96 @@
       await loadFiles();
     });
 
-    function addMsg(text, cls, sources = [], attachments = []) {
+    function buildMessageElement(item) {
       const div = document.createElement("div");
-      div.className = "msg " + cls;
-      if (text) {
+      div.className = "msg " + item.cls;
+      if (item.text) {
         const t = document.createElement("div");
-        t.textContent = text;
+        t.textContent = item.text;
         div.appendChild(t);
       }
-
-      const nonImages = attachments.filter(a => !/\.(png|jpe?g|webp)$/i.test(a.name));
-      const images = attachments.filter(a => /\.(png|jpe?g|webp)$/i.test(a.name));
-
-      if (nonImages.length) {
+      if (item.nonImages && item.nonImages.length) {
         const fBadge = document.createElement("div");
         fBadge.style.marginTop = "6px";
         fBadge.style.fontSize = "0.85rem";
         fBadge.style.opacity = "0.9";
-        fBadge.textContent = `📄 ${nonImages.map(a => a.name).join(", ")}`;
+        fBadge.textContent = `📄 ${item.nonImages.join(", ")}`;
         div.appendChild(fBadge);
       }
-      if (images.length) {
+      if (item.images && item.images.length) {
         const grid = document.createElement("div");
         grid.className = "preview-grid";
-        for (const im of images) {
+        for (const src of item.images) {
           const img = document.createElement("img");
           img.className = "preview";
-          img.src = URL.createObjectURL(im);
-          img.alt = im.name;
+          img.src = src;
+          img.alt = "Attached image";
           grid.appendChild(img);
         }
         div.appendChild(grid);
       }
-      if (sources.length) {
+      if (item.sources && item.sources.length) {
         const sDiv = document.createElement("div");
         sDiv.className = "sources";
-        sDiv.innerHTML = "<strong>Matched Sources:</strong>" + sources.map(s => {
+        sDiv.innerHTML = "<strong>Matched Sources:</strong>" + item.sources.map(s => {
           const unitLabel = s.filename && s.filename.toLowerCase().endsWith(".pptx") ? "Slide" : "Page";
           return `<div class="source-chip"><b>${s.filename} [${s.course_unit || "General"}] (${unitLabel} ${s.page})</b>: ${s.snippet.slice(0, 180)}...</div>`;
         }).join("");
         div.appendChild(sDiv);
       }
-      chat.appendChild(div);
       renderMath(div);
-      chat.scrollTop = chat.scrollHeight;
       return div;
     }
+
+    function persistChatState() {
+      // Keep recent messages and avoid oversized base64 images in localStorage
+      const safeItems = chatItems.slice(-40).map(it => ({
+        ...it,
+        images: (it.images || []).filter(u => !u.startsWith("data:"))
+      }));
+      writeJson(CACHE_KEYS.chatItems, safeItems);
+      writeJson(CACHE_KEYS.history, chatHistory.slice(-12));
+      writeJson(CACHE_KEYS.sessionLog, sessionLog.slice(-60));
+    }
+
+    function renderFullChat() {
+      chat.innerHTML = "";
+      const welcome = document.createElement("div");
+      welcome.className = "msg bot";
+      welcome.textContent = WELCOME_TEXT;
+      chat.appendChild(welcome);
+
+      for (const item of chatItems) {
+        chat.appendChild(buildMessageElement(item));
+      }
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addMsg(text, cls, sources = [], attachments = [], saveToCache = true) {
+      const nonImages = attachments.filter(a => !/\.(png|jpe?g|webp)$/i.test(a.name)).map(a => a.name);
+      const images = attachments
+        .filter(a => /\.(png|jpe?g|webp)$/i.test(a.name))
+        .map(a => URL.createObjectURL(a));
+
+      const item = { text, cls, sources, nonImages, images };
+      const div = buildMessageElement(item);
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+
+      if (saveToCache) {
+        chatItems.push({ ...item, images: [] });
+        persistChatState();
+      }
+      return div;
+    }
+
+    clearChatBtn.addEventListener("click", () => {
+      chatItems = [];
+      chatHistory = [];
+      sessionLog = [];
+      persistChatState();
+      renderFullChat();
+    });
 
     async function sendQuestion() {
       const q = questionEl.value.trim();
@@ -679,19 +780,19 @@
       if (!q && !atts.length) return;
 
       setVaultOpen(false);
-      addMsg(q, "user", [], atts);
+      addMsg(q, "user", [], atts, true);
 
       const attNames = atts.map(a => a.name).join(", ");
       const userSummary = [q, attNames ? `[Attached: ${attNames}]` : ""].filter(Boolean).join(" ");
       if (userSummary) chatHistory.push({ role: "user", text: userSummary });
       sessionLog.push(`### Question\n${userSummary}`);
+      persistChatState();
 
       questionEl.value = "";
       clearAttachment();
 
       const fd = new FormData();
       fd.append("question", q);
-      fd.append("api_key", apiKeyEl.value);
       fd.append("course_unit", unitFilterEl.value || "All");
       fd.append("history", JSON.stringify(chatHistory.slice(-6)));
       fd.append("style", writingStyleEl.value);
@@ -700,20 +801,21 @@
       }
 
       sendBtn.disabled = true;
-      const thinkingMsg = addMsg("Analyzing your question and course notes...", "bot");
+      const thinkingMsg = addMsg("Analyzing your question and course notes...", "bot", [], [], false);
 
       try {
         const res = await fetch("/ask", { method: "POST", body: fd });
         const data = await res.json();
         thinkingMsg.remove();
-        addMsg(data.answer, "bot", data.sources || []);
+        addMsg(data.answer, "bot", data.sources || [], [], true);
         if (data.answer) {
           chatHistory.push({ role: "assistant", text: data.answer });
           sessionLog.push(`### Answer\n${data.answer}`);
+          persistChatState();
         }
       } catch (err) {
         thinkingMsg.remove();
-        addMsg("Network error: " + err, "bot");
+        addMsg("Network error: " + err, "bot", [], [], false);
       } finally {
         sendBtn.disabled = false;
       }
@@ -726,28 +828,28 @@
       if (!targetText) return;
 
       if (typed) {
-        addMsg(`Rewrite in normal English:\n${typed}`, "user");
+        addMsg(`Rewrite in normal English:\n${typed}`, "user", [], [], true);
         questionEl.value = "";
       }
 
       const fd = new FormData();
       fd.append("text", targetText);
-      fd.append("api_key", apiKeyEl.value);
 
       normalRewriteBtn.disabled = true;
-      const thinkingMsg = addMsg("Rewriting into normal English...", "bot");
+      const thinkingMsg = addMsg("Rewriting into normal English...", "bot", [], [], false);
       try {
         const res = await fetch("/humanize", { method: "POST", body: fd });
         const data = await res.json();
         thinkingMsg.remove();
-        addMsg(data.answer, "bot");
+        addMsg(data.answer, "bot", [], [], true);
         if (data.answer) {
           chatHistory.push({ role: "assistant", text: data.answer });
           sessionLog.push(`### Normal English Version\n${data.answer}`);
+          persistChatState();
         }
       } catch (err) {
         thinkingMsg.remove();
-        addMsg("Network error: " + err, "bot");
+        addMsg("Network error: " + err, "bot", [], [], false);
       } finally {
         normalRewriteBtn.disabled = false;
       }
@@ -756,29 +858,29 @@
     practiceBtn.addEventListener("click", async () => {
       const topic = questionEl.value.trim();
       const unit = unitFilterEl.value || "All";
-      addMsg(`Generate practice drill (${unit}${topic ? " — " + topic : ""})`, "user");
+      addMsg(`Generate practice drill (${unit}${topic ? " — " + topic : ""})`, "user", [], [], true);
       questionEl.value = "";
 
       const fd = new FormData();
       fd.append("topic", topic);
-      fd.append("api_key", apiKeyEl.value);
       fd.append("course_unit", unit);
       fd.append("num_questions", "4");
 
       practiceBtn.disabled = true;
-      const thinkingMsg = addMsg("Generating practice questions from your notes...", "bot");
+      const thinkingMsg = addMsg("Generating practice questions from your notes...", "bot", [], [], false);
       try {
         const res = await fetch("/practice", { method: "POST", body: fd });
         const data = await res.json();
         thinkingMsg.remove();
-        addMsg(data.answer, "bot", data.sources || []);
+        addMsg(data.answer, "bot", data.sources || [], [], true);
         if (data.answer) {
           chatHistory.push({ role: "assistant", text: data.answer });
           sessionLog.push(`### Practice Drill (${unit})\n${data.answer}`);
+          persistChatState();
         }
       } catch (err) {
         thinkingMsg.remove();
-        addMsg("Network error: " + err, "bot");
+        addMsg("Network error: " + err, "bot", [], [], false);
       } finally {
         practiceBtn.disabled = false;
       }
@@ -825,6 +927,8 @@
       });
     }
 
+    renderFullChat();
+    hydrateCachedVault();
     loadFiles();
   </script>
 </body>
