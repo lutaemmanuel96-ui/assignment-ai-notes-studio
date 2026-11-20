@@ -1,0 +1,19 @@
+{
+  "name": "Assignment AI & Notes Studio",
+  "short_name": "Notes Studio",
+  "description": "Study notes vault, slide & PDF reader, math verifier, and assignment AI assistant.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

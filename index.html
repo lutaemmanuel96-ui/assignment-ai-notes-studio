@@ -132,6 +132,15 @@
       min-height: 36px;
     }
     .tool-btn:hover { border-color: #6366f1; }
+    .install-btn {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+    }
+    .install-btn:hover {
+      background: #0369a1;
+      border-color: #7dd3fc;
+    }
 
     .upload-box {
       border: 2px dashed #334155;
@@ -385,6 +394,7 @@
         </div>
         <input type="password" id="apiKey" placeholder="Gemini API key (AI answers, photo & scanned OCR)" />
         <div class="toolbar-actions">
+          <button type="button" class="tool-btn install-btn" id="installAppBtn" style="display:none">📲 Install App</button>
           <select id="writingStyle" title="Answer phrasing style">
             <option value="standard">Style: Standard Tutor</option>
             <option value="normal">Style: Normal English</option>
@@ -429,6 +439,7 @@
     const backdrop = document.getElementById("backdrop");
     const openVaultBtn = document.getElementById("openVaultBtn");
     const closeVaultBtn = document.getElementById("closeVaultBtn");
+    const installAppBtn = document.getElementById("installAppBtn");
     const fileInput = document.getElementById("fileInput");
     const uploadUnitEl = document.getElementById("uploadUnit");
     const unitFilterEl = document.getElementById("unitFilter");
@@ -453,8 +464,30 @@
     const mathResultEl = document.getElementById("mathResult");
 
     let pendingAttachments = [];
+    let deferredInstallPrompt = null;
     const sessionLog = [];
     const chatHistory = [];
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      if (installAppBtn) installAppBtn.style.display = "inline-block";
+    });
+
+    if (installAppBtn) {
+      installAppBtn.addEventListener("click", async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        installAppBtn.style.display = "none";
+      });
+    }
+
+    window.addEventListener("appinstalled", () => {
+      deferredInstallPrompt = null;
+      if (installAppBtn) installAppBtn.style.display = "none";
+    });
 
     function setVaultOpen(isOpen) {
       sidebar.classList.toggle("open", isOpen);
