@@ -1,7 +1,8 @@
 fastapi
-uvicorn[standard]
+uvicorn
 python-multipart
-pypdf
-python-docx
 requests
 sympy
+python-docx
+pypdf
+python-pptx

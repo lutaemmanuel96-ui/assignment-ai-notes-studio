@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Assignment AI & Notes Studio</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b0e14" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
@@ -61,9 +67,9 @@
       <input type="text" id="uploadUnit" value="ACS 410" placeholder="e.g. ACS 410, ACS 413" style="width:100%" />
     </div>
     <label class="upload-box">
-      <strong>+ Upload Notes / Handouts</strong><br/>
-      <span style="font-size:0.8rem;color:#94a3b8">PDF (incl. scanned OCR), DOCX, TXT, MD</span>
-      <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md" style="display:none" />
+      <strong>+ Upload Notes / Slides</strong><br/>
+      <span style="font-size:0.8rem;color:#94a3b8">PDF (incl. scanned OCR), PPTX, DOCX, TXT, MD</span>
+      <input type="file" id="fileInput" multiple accept=".pdf,.pptx,.docx,.txt,.md" style="display:none" />
     </label>
     <div id="uploadStatus" style="font-size:0.8rem;color:#38bdf8"></div>
     <div>
@@ -99,7 +105,7 @@
     </div>
 
     <div class="chat" id="chat">
-      <div class="msg bot">Upload course notes on the left (with a unit tag like <b>ACS 410</b>), filter by unit, ask questions by typing or attaching a photo/document, use <b>Normal English</b> for natural phrasing, run <b>📝 Practice Drill</b> for CAT prep, or export your session to <b>DOCX / MD / PDF</b>.</div>
+      <div class="msg bot">Upload course notes or slides on the left (with a unit tag like <b>ACS 410</b>), filter by unit, ask questions by typing or attaching a photo/document/slide deck, use <b>Normal English</b> for natural phrasing, run <b>📝 Practice Drill</b> for CAT prep, or export your session to <b>DOCX / MD / PDF</b>.</div>
     </div>
 
     <div class="composer-wrap">
@@ -108,8 +114,8 @@
         <button type="button" id="clearAttachmentBtn" title="Remove attachment">✕</button>
       </div>
       <div class="input-bar">
-        <button type="button" class="tool-btn" id="attachBtn">📎 Photo / Doc</button>
-        <input type="file" id="questionFileInput" accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt,.md" style="display:none" />
+        <button type="button" class="tool-btn" id="attachBtn">📎 Photo / Doc / Slides</button>
+        <input type="file" id="questionFileInput" accept=".png,.jpg,.jpeg,.webp,.pdf,.pptx,.docx,.txt,.md" style="display:none" />
         <textarea id="question" placeholder="Type your assignment question or practice topic (Enter to send, Shift+Enter for newline)..."></textarea>
         <button type="button" class="send-btn" id="sendBtn">Ask</button>
       </div>
@@ -251,185 +257,3 @@
 
     function addMsg(text, cls, sources = [], imgUrl = "", fileLabel = "") {
       const div = document.createElement("div");
-      div.className = "msg " + cls;
-      if (text) {
-        const t = document.createElement("div");
-        t.textContent = text;
-        div.appendChild(t);
-      }
-      if (fileLabel && !imgUrl) {
-        const fBadge = document.createElement("div");
-        fBadge.style.marginTop = "6px";
-        fBadge.style.fontSize = "0.85rem";
-        fBadge.style.opacity = "0.9";
-        fBadge.textContent = `📄 ${fileLabel}`;
-        div.appendChild(fBadge);
-      }
-      if (imgUrl) {
-        const img = document.createElement("img");
-        img.className = "preview";
-        img.src = imgUrl;
-        div.appendChild(img);
-      }
-      if (sources.length) {
-        const sDiv = document.createElement("div");
-        sDiv.className = "sources";
-        sDiv.innerHTML = "<strong>Matched Sources:</strong>" + sources.map(s => `
-          <div class="source-chip"><b>${s.filename} [${s.course_unit || "General"}] (Page ${s.page})</b>: ${s.snippet.slice(0, 180)}...</div>
-        `).join("");
-        div.appendChild(sDiv);
-      }
-      chat.appendChild(div);
-      renderMath(div);
-      chat.scrollTop = chat.scrollHeight;
-      return div;
-    }
-
-    async function sendQuestion() {
-      const q = questionEl.value.trim();
-      const att = pendingAttachment;
-      if (!q && !att) return;
-
-      const isImage = att && /\.(png|jpe?g|webp)$/i.test(att.name);
-      const previewUrl = isImage ? URL.createObjectURL(att) : "";
-      addMsg(q, "user", [], previewUrl, att ? att.name : "");
-
-      const userSummary = q || (att ? `[Attached file: ${att.name}]` : "");
-      if (userSummary) chatHistory.push({ role: "user", text: userSummary });
-      sessionLog.push(`### Question\n${userSummary}`);
-
-      questionEl.value = "";
-      clearAttachment();
-
-      const fd = new FormData();
-      fd.append("question", q);
-      fd.append("api_key", apiKeyEl.value);
-      fd.append("course_unit", unitFilterEl.value || "All");
-      fd.append("history", JSON.stringify(chatHistory.slice(-6)));
-      fd.append("style", writingStyleEl.value);
-      if (att) fd.append("attachment", att);
-
-      sendBtn.disabled = true;
-      const thinkingMsg = addMsg("Analyzing your question and course notes...", "bot");
-
-      try {
-        const res = await fetch("/ask", { method: "POST", body: fd });
-        const data = await res.json();
-        thinkingMsg.remove();
-        addMsg(data.answer, "bot", data.sources || []);
-        if (data.answer) {
-          chatHistory.push({ role: "assistant", text: data.answer });
-          sessionLog.push(`### Answer\n${data.answer}`);
-        }
-      } catch (err) {
-        thinkingMsg.remove();
-        addMsg("Network error: " + err, "bot");
-      } finally {
-        sendBtn.disabled = false;
-      }
-    }
-
-    normalRewriteBtn.addEventListener("click", async () => {
-      const typed = questionEl.value.trim();
-      const lastBot = [...chat.querySelectorAll(".msg.bot")].pop();
-      const targetText = typed || (lastBot && lastBot.firstChild ? lastBot.firstChild.textContent.trim() : "");
-      if (!targetText) return;
-
-      if (typed) {
-        addMsg(`Rewrite in normal English:\n${typed}`, "user");
-        questionEl.value = "";
-      }
-
-      const fd = new FormData();
-      fd.append("text", targetText);
-      fd.append("api_key", apiKeyEl.value);
-
-      normalRewriteBtn.disabled = true;
-      const thinkingMsg = addMsg("Rewriting into normal English...", "bot");
-      try {
-        const res = await fetch("/humanize", { method: "POST", body: fd });
-        const data = await res.json();
-        thinkingMsg.remove();
-        addMsg(data.answer, "bot");
-        if (data.answer) {
-          chatHistory.push({ role: "assistant", text: data.answer });
-          sessionLog.push(`### Normal English Version\n${data.answer}`);
-        }
-      } catch (err) {
-        thinkingMsg.remove();
-        addMsg("Network error: " + err, "bot");
-      } finally {
-        normalRewriteBtn.disabled = false;
-      }
-    });
-
-    practiceBtn.addEventListener("click", async () => {
-      const topic = questionEl.value.trim();
-      const unit = unitFilterEl.value || "All";
-      addMsg(`Generate practice drill (${unit}${topic ? " — " + topic : ""})`, "user");
-      questionEl.value = "";
-
-      const fd = new FormData();
-      fd.append("topic", topic);
-      fd.append("api_key", apiKeyEl.value);
-      fd.append("course_unit", unit);
-      fd.append("num_questions", "4");
-
-      practiceBtn.disabled = true;
-      const thinkingMsg = addMsg("Generating practice questions from your notes...", "bot");
-      try {
-        const res = await fetch("/practice", { method: "POST", body: fd });
-        const data = await res.json();
-        thinkingMsg.remove();
-        addMsg(data.answer, "bot", data.sources || []);
-        if (data.answer) {
-          chatHistory.push({ role: "assistant", text: data.answer });
-          sessionLog.push(`### Practice Drill (${unit})\n${data.answer}`);
-        }
-      } catch (err) {
-        thinkingMsg.remove();
-        addMsg("Network error: " + err, "bot");
-      } finally {
-        practiceBtn.disabled = false;
-      }
-    });
-
-    function buildMarkdownExport() {
-      const unit = unitFilterEl.value || "All";
-      return `# Assignment AI & Notes Studio (${unit})\n\n` + sessionLog.join("\n\n---\n\n");
-    }
-
-    document.getElementById("exportMdBtn").addEventListener("click", () => {
-      const md = buildMarkdownExport();
-      const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "assignment-notes-session.md";
-      a.click();
-    });
-
-    document.getElementById("exportDocxBtn").addEventListener("click", async () => {
-      const unit = unitFilterEl.value || "All";
-      const fd = new FormData();
-      fd.append("title", `Assignment Solutions (${unit})`);
-      fd.append("content", sessionLog.join("\n\n") || "No session items yet.");
-      const res = await fetch("/export/docx", { method: "POST", body: fd });
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "assignment-solutions.docx";
-      a.click();
-    });
-
-    sendBtn.addEventListener("click", sendQuestion);
-    questionEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendQuestion();
-      }
-    });
-
-    loadFiles();
-  </script>
-</body>
-</html>
