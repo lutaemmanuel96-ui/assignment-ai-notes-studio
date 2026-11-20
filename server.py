@@ -27,8 +27,8 @@ except Exception:
     HAS_SYMPY = False
 
 app = FastAPI()
-DB_PATH = "notes.db"
-GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"]
+DB_PATH = os.getenv("NOTES_DB_PATH", "notes.db")
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"]
 
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "are", "was", "were",
@@ -50,6 +50,9 @@ def resolve_api_key(api_key: Optional[str]) -> str:
 
 
 def init_db():
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         """
@@ -240,7 +243,7 @@ def score_chunks(query: str, rows, top_k: int = 8):
 def call_gemini(parts, api_key: str, timeout: int = 45):
     effective_key = resolve_api_key(api_key)
     if not effective_key:
-        return None, "API Error: No Gemini API key provided or set in GEMINI_API_KEY."
+        return None, "API Error: No Gemini API key configured on the server (GEMINI_API_KEY)."
     answer = None
     last_err = ""
     for m in GEMINI_MODELS:
@@ -386,7 +389,7 @@ async def upload_file(
     conn.close()
     note = ""
     if count == 0 and name.lower().endswith(".pdf") and not effective_key:
-        note = " (Scanned PDF detected: add a Gemini API key or set GEMINI_API_KEY to enable OCR)"
+        note = " (Scanned PDF detected: set GEMINI_API_KEY on the server to enable OCR)"
     elif count == 0 and name.lower().endswith(".ppt"):
         note = " (Legacy .ppt format detected: save as .pptx or .pdf first so slides can be extracted)"
     elif count == 0 and name.lower().endswith(".pptx"):
@@ -401,6 +404,7 @@ async def ask_question(
     course_unit: str = Form("All"),
     history: str = Form("[]"),
     style: str = Form("standard"),
+    study_profile: str = Form(""),
     attachments: Optional[list[UploadFile]] = File(None),
     attachment: Optional[UploadFile] = File(None),
 ):
@@ -487,6 +491,11 @@ async def ask_question(
             "\n".join(recent_turns) if recent_turns else "(No prior turns in this session)"
         )
 
+        profile_clean = re.sub(r"\s+", " ", (study_profile or "")).strip()[:1000]
+        profile_block = (
+            f"STUDENT STUDY CONTEXT:\n{profile_clean}\n\n" if profile_clean else ""
+        )
+
         style_instruction = (
             "Write in clear, natural, everyday academic English—vary sentence lengths, avoid "
             "formulaic AI transitions or stiff filler phrases, and sound like a thoughtful student "
@@ -501,6 +510,7 @@ async def ask_question(
             "below, cite the filename, course unit, and page/slide number whenever using them, "
             "format math using $...$ for inline and $$...$$ for display equations, and show "
             f"clear step-by-step reasoning. {style_instruction}\n\n"
+            f"{profile_block}"
             f"RECENT CONVERSATION:\n{history_block}\n\n"
             f"COURSE NOTES:\n{context_block}\n\n"
         ]
@@ -519,9 +529,9 @@ async def ask_question(
             answer = err
     else:
         prefix = (
-            "Photos require a Gemini API key in the top bar (or GEMINI_API_KEY on the server) so the vision model can read the image(s). "
+            "Photos require GEMINI_API_KEY configured on the server so the vision model can read the image(s). "
             if has_images
-            else "Offline Retrieval Mode (Add a Gemini API key in the top bar or set GEMINI_API_KEY on the server for full step-by-step AI explanations): "
+            else "Offline Retrieval Mode (Configure GEMINI_API_KEY on the server for full step-by-step AI explanations): "
         )
         answer = (
             prefix
@@ -549,7 +559,7 @@ async def humanize_text(text: str = Form(...), api_key: str = Form("")):
         return JSONResponse({"answer": "Provide some text to rewrite into normal English."})
     if not effective_key:
         return JSONResponse({
-            "answer": "Add a Gemini API key in the top bar (or set GEMINI_API_KEY on the server) first to rewrite text into normal English."
+            "answer": "Configure GEMINI_API_KEY on the server first to rewrite text into normal English."
         })
 
     prompt = (
@@ -569,6 +579,7 @@ async def generate_practice(
     api_key: str = Form(""),
     course_unit: str = Form("All"),
     num_questions: int = Form(4),
+    study_profile: str = Form(""),
 ):
     effective_key = resolve_api_key(api_key)
     rows = fetch_rows_by_unit(course_unit)
@@ -578,7 +589,8 @@ async def generate_practice(
             "sources": [],
         })
 
-    query = topic.strip() or f"key concepts formulas definitions exercises {course_unit}"
+    profile_clean = re.sub(r"\s+", " ", (study_profile or "")).strip()[:1200]
+    query = topic.strip() or profile_clean or f"key concepts formulas definitions exercises {course_unit}"
     top = score_chunks(query, rows, top_k=8)
     if not top:
         top = [(0.5, r[1], r[2], r[3], r[4]) for r in rows[:6]]
@@ -604,11 +616,17 @@ async def generate_practice(
         )
         return JSONResponse({
             "answer": (
-                "Add a Gemini API key in the top bar (or set GEMINI_API_KEY on the server) to generate full practice questions & worked solutions. "
+                "Configure GEMINI_API_KEY on the server to generate full practice questions & worked solutions. "
                 "Here are key passages from your notes to drill from right now:\n\n" + excerpts
             ),
             "sources": sources,
         })
+
+    profile_block = (
+        f"STUDENT STUDY HISTORY (prioritize topics the student recently queried or drilled):\n{profile_clean}\n\n"
+        if profile_clean
+        else ""
+    )
 
     prompt = (
         f"Create {count} university-level practice/CAT questions based on the course notes below"
@@ -616,6 +634,7 @@ async def generate_practice(
         "Include a mix of conceptual and calculation/application questions where appropriate, "
         "format math with $...$ / $$...$$, cite the note filename and page/slide, and put "
         "step-by-step worked solutions under a clear '## Worked Solutions' heading at the end.\n\n"
+        f"{profile_block}"
         f"COURSE NOTES:\n{context_block}"
     )
     answer, err = call_gemini([{"text": prompt}], api_key=effective_key, timeout=45)
