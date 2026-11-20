@@ -42,11 +42,12 @@
     .msg { max-width: 840px; padding: 14px 18px; border-radius: 12px; line-height: 1.55; white-space: pre-wrap; }
     .msg.user { align-self: flex-end; background: #4f46e5; color: #fff; }
     .msg.bot { align-self: flex-start; background: #161d2d; border: 1px solid #263045; }
-    .msg img.preview { display: block; max-width: 280px; max-height: 220px; border-radius: 8px; margin-top: 8px; border: 1px solid rgba(255,255,255,0.2); }
+    .msg .preview-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .msg img.preview { display: block; max-width: 240px; max-height: 190px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }
     .sources { margin-top: 10px; padding-top: 10px; border-top: 1px solid #2a354d; font-size: 0.8rem; color: #94a3b8; }
     .source-chip { background: #0f172a; padding: 6px 10px; border-radius: 6px; margin-top: 6px; border-left: 3px solid #38bdf8; }
     .composer-wrap { background: #111622; border-top: 1px solid #1e293b; padding: 12px 18px 14px; display: flex; flex-direction: column; gap: 8px; }
-    .attachment-bar { display: none; align-items: center; gap: 10px; background: #182235; border: 1px solid #334155; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; width: fit-content; }
+    .attachment-bar { display: none; align-items: center; gap: 8px; flex-wrap: wrap; background: #182235; border: 1px solid #334155; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; width: fit-content; max-width: 100%; }
     .attachment-bar button { background: transparent; border: none; color: #f87171; font-weight: 700; cursor: pointer; padding: 0 4px; }
     .input-bar { display: flex; gap: 10px; align-items: stretch; }
     .input-bar textarea { flex: 1; background: #0b0e14; border: 1px solid #334155; color: #fff; border-radius: 8px; padding: 10px; resize: none; height: 54px; }
@@ -68,7 +69,7 @@
     </div>
     <label class="upload-box">
       <strong>+ Upload Notes / Slides</strong><br/>
-      <span style="font-size:0.8rem;color:#94a3b8">PDF (incl. scanned OCR), PPTX, DOCX, TXT, MD</span>
+      <span style="font-size:0.8rem;color:#94a3b8">Select 1 or more: PDF (OCR), PPTX, DOCX, TXT, MD</span>
       <input type="file" id="fileInput" multiple accept=".pdf,.pptx,.docx,.txt,.md" style="display:none" />
     </label>
     <div id="uploadStatus" style="font-size:0.8rem;color:#38bdf8"></div>
@@ -105,17 +106,17 @@
     </div>
 
     <div class="chat" id="chat">
-      <div class="msg bot">Upload course notes or slides on the left (with a unit tag like <b>ACS 410</b>), filter by unit, ask questions by typing or attaching a photo/document/slide deck, use <b>Normal English</b> for natural phrasing, run <b>📝 Practice Drill</b> for CAT prep, or export your session to <b>DOCX / MD / PDF</b>.</div>
+      <div class="msg bot">Upload one or more course notes or slides on the left (with a unit tag like <b>ACS 410</b>), filter by unit, ask questions by typing or attaching multiple photos/documents/slides at once, use <b>Normal English</b> for natural phrasing, run <b>📝 Practice Drill</b> for CAT prep, or export your session to <b>DOCX / MD / PDF</b>.</div>
     </div>
 
     <div class="composer-wrap">
       <div class="attachment-bar" id="attachmentBar">
         <span id="attachmentLabel"></span>
-        <button type="button" id="clearAttachmentBtn" title="Remove attachment">✕</button>
+        <button type="button" id="clearAttachmentBtn" title="Remove attachments">✕</button>
       </div>
       <div class="input-bar">
-        <button type="button" class="tool-btn" id="attachBtn">📎 Photo / Doc / Slides</button>
-        <input type="file" id="questionFileInput" accept=".png,.jpg,.jpeg,.webp,.pdf,.pptx,.docx,.txt,.md" style="display:none" />
+        <button type="button" class="tool-btn" id="attachBtn">📎 Photos / Docs / Slides</button>
+        <input type="file" id="questionFileInput" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.pptx,.docx,.txt,.md" style="display:none" />
         <textarea id="question" placeholder="Type your assignment question or practice topic (Enter to send, Shift+Enter for newline)..."></textarea>
         <button type="button" class="send-btn" id="sendBtn">Ask</button>
       </div>
@@ -146,7 +147,7 @@
     const verifyMathBtn = document.getElementById("verifyMathBtn");
     const mathResultEl = document.getElementById("mathResult");
 
-    let pendingAttachment = null;
+    let pendingAttachments = [];
     const sessionLog = [];
     const chatHistory = [];
 
@@ -165,21 +166,32 @@
       }
     }
 
+    function updateAttachmentBar() {
+      if (!pendingAttachments.length) {
+        attachmentLabel.textContent = "";
+        attachmentBar.style.display = "none";
+        return;
+      }
+      attachmentLabel.textContent = `Attached (${pendingAttachments.length}): ${pendingAttachments.map(f => f.name).join(", ")}`;
+      attachmentBar.style.display = "flex";
+    }
+
     attachBtn.addEventListener("click", () => questionFileInput.click());
 
     questionFileInput.addEventListener("change", () => {
-      const f = questionFileInput.files && questionFileInput.files[0];
-      if (!f) return;
-      pendingAttachment = f;
-      attachmentLabel.textContent = `Attached: ${f.name}`;
-      attachmentBar.style.display = "flex";
+      const files = Array.from(questionFileInput.files || []);
+      if (!files.length) return;
+      for (const f of files) {
+        const exists = pendingAttachments.some(x => x.name === f.name && x.size === f.size);
+        if (!exists) pendingAttachments.push(f);
+      }
+      updateAttachmentBar();
     });
 
     function clearAttachment() {
-      pendingAttachment = null;
+      pendingAttachments = [];
       questionFileInput.value = "";
-      attachmentLabel.textContent = "";
-      attachmentBar.style.display = "none";
+      updateAttachmentBar();
     }
 
     clearAttachmentBtn.addEventListener("click", clearAttachment);
@@ -240,20 +252,232 @@
     }
 
     fileInput.addEventListener("change", async () => {
+      const selected = Array.from(fileInput.files || []);
+      if (!selected.length) return;
       const unitVal = uploadUnitEl.value.trim() || "General";
-      for (const file of fileInput.files) {
-        uploadStatus.textContent = `Indexing ${file.name} (${unitVal})...`;
+      let done = 0;
+      for (const file of selected) {
+        done += 1;
+        uploadStatus.textContent = `Indexing (${done}/${selected.length}) ${file.name} (${unitVal})...`;
         const fd = new FormData();
         fd.append("file", file);
         fd.append("course_unit", unitVal);
         fd.append("api_key", apiKeyEl.value);
-        const res = await fetch("/upload", { method: "POST", body: fd });
-        const data = await res.json();
-        uploadStatus.textContent = `Indexed ${data.filename} [${data.course_unit}] (${data.chunks} chunks)${data.note || ""}`;
+        try {
+          const res = await fetch("/upload", { method: "POST", body: fd });
+          const data = await res.json();
+          if (!res.ok) {
+            uploadStatus.textContent = `Error indexing ${file.name}: ${data.detail || res.status}`;
+            continue;
+          }
+          uploadStatus.textContent = `Indexed (${done}/${selected.length}) ${data.filename} [${data.course_unit}] (${data.chunks} chunks)${data.note || ""}`;
+        } catch (err) {
+          uploadStatus.textContent = `Upload failed for ${file.name}: ${err}`;
+        }
       }
       fileInput.value = "";
       await loadFiles();
     });
 
-    function addMsg(text, cls, sources = [], imgUrl = "", fileLabel = "") {
+    function addMsg(text, cls, sources = [], attachments = []) {
       const div = document.createElement("div");
+      div.className = "msg " + cls;
+      if (text) {
+        const t = document.createElement("div");
+        t.textContent = text;
+        div.appendChild(t);
+      }
+
+      const nonImages = attachments.filter(a => !/\.(png|jpe?g|webp)$/i.test(a.name));
+      const images = attachments.filter(a => /\.(png|jpe?g|webp)$/i.test(a.name));
+
+      if (nonImages.length) {
+        const fBadge = document.createElement("div");
+        fBadge.style.marginTop = "6px";
+        fBadge.style.fontSize = "0.85rem";
+        fBadge.style.opacity = "0.9";
+        fBadge.textContent = `📄 ${nonImages.map(a => a.name).join(", ")}`;
+        div.appendChild(fBadge);
+      }
+      if (images.length) {
+        const grid = document.createElement("div");
+        grid.className = "preview-grid";
+        for (const im of images) {
+          const img = document.createElement("img");
+          img.className = "preview";
+          img.src = URL.createObjectURL(im);
+          img.alt = im.name;
+          grid.appendChild(img);
+        }
+        div.appendChild(grid);
+      }
+      if (sources.length) {
+        const sDiv = document.createElement("div");
+        sDiv.className = "sources";
+        sDiv.innerHTML = "<strong>Matched Sources:</strong>" + sources.map(s => {
+          const unitLabel = s.filename && s.filename.toLowerCase().endsWith(".pptx") ? "Slide" : "Page";
+          return `<div class="source-chip"><b>${s.filename} [${s.course_unit || "General"}] (${unitLabel} ${s.page})</b>: ${s.snippet.slice(0, 180)}...</div>`;
+        }).join("");
+        div.appendChild(sDiv);
+      }
+      chat.appendChild(div);
+      renderMath(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    async function sendQuestion() {
+      const q = questionEl.value.trim();
+      const atts = [...pendingAttachments];
+      if (!q && !atts.length) return;
+
+      addMsg(q, "user", [], atts);
+
+      const attNames = atts.map(a => a.name).join(", ");
+      const userSummary = [q, attNames ? `[Attached: ${attNames}]` : ""].filter(Boolean).join(" ");
+      if (userSummary) chatHistory.push({ role: "user", text: userSummary });
+      sessionLog.push(`### Question\n${userSummary}`);
+
+      questionEl.value = "";
+      clearAttachment();
+
+      const fd = new FormData();
+      fd.append("question", q);
+      fd.append("api_key", apiKeyEl.value);
+      fd.append("course_unit", unitFilterEl.value || "All");
+      fd.append("history", JSON.stringify(chatHistory.slice(-6)));
+      fd.append("style", writingStyleEl.value);
+      for (const a of atts) {
+        fd.append("attachments", a);
+      }
+
+      sendBtn.disabled = true;
+      const thinkingMsg = addMsg("Analyzing your question and course notes...", "bot");
+
+      try {
+        const res = await fetch("/ask", { method: "POST", body: fd });
+        const data = await res.json();
+        thinkingMsg.remove();
+        addMsg(data.answer, "bot", data.sources || []);
+        if (data.answer) {
+          chatHistory.push({ role: "assistant", text: data.answer });
+          sessionLog.push(`### Answer\n${data.answer}`);
+        }
+      } catch (err) {
+        thinkingMsg.remove();
+        addMsg("Network error: " + err, "bot");
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    normalRewriteBtn.addEventListener("click", async () => {
+      const typed = questionEl.value.trim();
+      const lastBot = [...chat.querySelectorAll(".msg.bot")].pop();
+      const targetText = typed || (lastBot && lastBot.firstChild ? lastBot.firstChild.textContent.trim() : "");
+      if (!targetText) return;
+
+      if (typed) {
+        addMsg(`Rewrite in normal English:\n${typed}`, "user");
+        questionEl.value = "";
+      }
+
+      const fd = new FormData();
+      fd.append("text", targetText);
+      fd.append("api_key", apiKeyEl.value);
+
+      normalRewriteBtn.disabled = true;
+      const thinkingMsg = addMsg("Rewriting into normal English...", "bot");
+      try {
+        const res = await fetch("/humanize", { method: "POST", body: fd });
+        const data = await res.json();
+        thinkingMsg.remove();
+        addMsg(data.answer, "bot");
+        if (data.answer) {
+          chatHistory.push({ role: "assistant", text: data.answer });
+          sessionLog.push(`### Normal English Version\n${data.answer}`);
+        }
+      } catch (err) {
+        thinkingMsg.remove();
+        addMsg("Network error: " + err, "bot");
+      } finally {
+        normalRewriteBtn.disabled = false;
+      }
+    });
+
+    practiceBtn.addEventListener("click", async () => {
+      const topic = questionEl.value.trim();
+      const unit = unitFilterEl.value || "All";
+      addMsg(`Generate practice drill (${unit}${topic ? " — " + topic : ""})`, "user");
+      questionEl.value = "";
+
+      const fd = new FormData();
+      fd.append("topic", topic);
+      fd.append("api_key", apiKeyEl.value);
+      fd.append("course_unit", unit);
+      fd.append("num_questions", "4");
+
+      practiceBtn.disabled = true;
+      const thinkingMsg = addMsg("Generating practice questions from your notes...", "bot");
+      try {
+        const res = await fetch("/practice", { method: "POST", body: fd });
+        const data = await res.json();
+        thinkingMsg.remove();
+        addMsg(data.answer, "bot", data.sources || []);
+        if (data.answer) {
+          chatHistory.push({ role: "assistant", text: data.answer });
+          sessionLog.push(`### Practice Drill (${unit})\n${data.answer}`);
+        }
+      } catch (err) {
+        thinkingMsg.remove();
+        addMsg("Network error: " + err, "bot");
+      } finally {
+        practiceBtn.disabled = false;
+      }
+    });
+
+    function buildMarkdownExport() {
+      const unit = unitFilterEl.value || "All";
+      return `# Assignment AI & Notes Studio (${unit})\n\n` + sessionLog.join("\n\n---\n\n");
+    }
+
+    document.getElementById("exportMdBtn").addEventListener("click", () => {
+      const md = buildMarkdownExport();
+      const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "assignment-notes-session.md";
+      a.click();
+    });
+
+    document.getElementById("exportDocxBtn").addEventListener("click", async () => {
+      const unit = unitFilterEl.value || "All";
+      const fd = new FormData();
+      fd.append("title", `Assignment Solutions (${unit})`);
+      fd.append("content", sessionLog.join("\n\n") || "No session items yet.");
+      const res = await fetch("/export/docx", { method: "POST", body: fd });
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "assignment-solutions.docx";
+      a.click();
+    });
+
+    sendBtn.addEventListener("click", sendQuestion);
+    questionEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendQuestion();
+      }
+    });
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(err => console.error("SW error:", err));
+      });
+    }
+
+    loadFiles();
+  </script>
+</body>
+</html>
